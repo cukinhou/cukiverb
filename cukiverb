@@ -1,0 +1,218 @@
+desc: CukiVerb. Partitioned Convolutive Reverb by Javier Nistal Hurle.
+
+slider1:/impulse_response:guitar.wav:Select Impulse Response
+slider2:2<5,15,1 {32,64,128,256,512,1024,2048,4096,8192,16384,32768}> FFT length
+slider3:0, Number of partitions
+slider4:0<-120,30,1>preamp (dB)
+
+@init
+
+ir_buffer = 0;
+
+init = 1;
+ 
+@slider
+
+
+//Read Impulse Response from slider
+(slider1|0)!= -1 ?
+(
+
+  handle = file_open(slider1);
+  handle > 0? 
+  (
+    //this will set the first parameter to the number of
+    //channels, and the second to the samplerate.  
+    file_riff(handle, ir_ch, ir_fs);
+    ir_ch ?
+    (
+      //Returns the number of items per ch remaining in the file     
+      ir_length = (file_avail(handle)/ir_ch)|0; 
+      
+      //This reads (or writes) the block of local memory from(to) the current file.
+      //Returns the actual number of items read (or written).      
+      cantidad_muestrasIR = file_mem(handle,ir_buffer,ir_length*ir_ch);
+      
+      init = 1;                                             
+      
+    );
+         
+    file_close(handle);
+  );
+);
+ preamp=2^(slider4/6);
+//Has the IR changed?
+init?
+( 
+  
+  L=2^(slider2+5);
+  K=L/2;
+  Q=ceil(ir_length*ir_ch/K);
+  slider3=Q;
+  init = 0;
+  
+  //Length of IR to be divisible by Q
+  ir_length_Q = Q*ceil((ir_length*ir_ch)/Q);
+  //insert zeros in IR
+  memset(ir_length*ir_ch,0.0,ir_length_Q-ir_length*ir_ch); 
+  
+  //Partition length power of 2
+  part_ir_length = ir_length_Q/Q;
+  //K = 2^ceil(log(part_ir_length)/log(2));
+  dif = K-part_ir_length;
+    
+  //fft length  
+  //L = 2*K;  
+  
+  //Partition fft buffer size
+  buff_size_part_fft = 2*L;
+  
+  //fft buffer
+  buff_ir_fft = ir_length_Q+ir_buffer;   
+  fft_buff_total_size = buff_size_part_fft*Q;
+    
+  //Initialize fft buffer
+  //memset( buff_ir_fft,0.0,fft_buff_total_size); 
+  
+  //incoming samples buffer
+  buf_read_block = buff_ir_fft+fft_buff_total_size;
+  buf_size_read_block = L;
+  //buff_block=IR_buffer+buff_ir_fft+fft_buff_total_size;
+  
+  //out samples buffer
+  out_buf = buf_read_block+buf_size_read_block;
+  out_buf_size = K;  ////////////////comprobar, L
+  
+  //circular buffer
+  buf_circ = out_buf+out_buf_size;
+  buf_circ_size = 2*L;
+  
+  //fft in samples buffer
+  buf_in_fft=buf_circ+buf_circ_size;
+  buf_in_fft_size=2*L;
+  
+  //buffer concolve
+  buf_conv_dest = buf_in_fft + buf_in_fft_size;
+  buf_conv_size = fft_buff_total_size;
+  
+  //buffer cicrular suma
+  buf_suma = buf_conv_dest + buf_conv_size;
+  buf_suma_size = fft_buff_total_size;
+  
+  //Initialice mem
+  total_mem = fft_buff_total_size+buf_size_read_block+
+  out_buf_size+buf_circ_size+ buf_in_fft_size+buf_conv_size+buf_suma_size;
+  
+  memset(buff_ir_fft,0.0,total_mem);
+  
+  //Prepare for the Q partitions' ffts; 
+  //partition counter
+  qi = 0;
+  
+  loop(Q,
+  
+  //partition's sample counter
+  i=0;
+  
+    //We fill 'buff_ir_fft' with blocks of 'part_ir_length' 
+    //samples from the impulse response; 
+    //each block is zero padded up to 'buff_size_part_fft'
+    loop(part_ir_length,
+      buff_ir_fft[i*2+0+qi*buff_size_part_fft]=IR_buffer[i+part_ir_length*qi];
+      buff_ir_fft[i*2+1+qi*buff_size_part_fft]=0.0; 
+      
+      i += 1;
+    );
+    
+    //qi partition fft:
+    fft(buff_ir_fft+qi*buff_size_part_fft, L);
+    
+    qi += 1;
+    
+  );//loop Q 
+);
+
+//In and out counters_
+in_indx=0;
+out_indx=0;
+nBlock=0;
+bloque_completo=0;
+@block
+  
+@sample
+
+in = preamp*0.5 * (spl0 + spl1);
+
+//write input samples into the reading buffer
+buf_read_block[in_indx*2+0]=in;
+buf_read_block[in_indx*2+1]=0.0;
+in_indx += 1;
+
+//Completed one semi-block of samples?
+in_indx >= K?
+(
+  in_indx=0;
+  
+  memset(out_buf,0.0,K);
+  //Delete from circular buffer first half
+  memset(buf_circ,0.0,L);
+  
+  //Copy second half to first position in the buffer
+  memcpy(buf_circ,buf_circ+L,L);
+  
+  //Delete second half of buffer
+  memset(buf_circ+L,0.0,L);
+  
+  //Add the current block to the second half of the buffer
+  memcpy(buf_circ+L,buf_read_block,L);
+         
+  //Delete fft buffer
+  memset(buf_in_fft,0.0,buf_in_fft_size);
+  
+  //Delete first L samples from the addition circular buffer
+  memset(buf_suma,0.0,2*L);
+     
+  memcpy(buf_in_fft, buf_circ, buf_circ_size);
+  
+  //Copy the IR to the convolution buffer
+  memcpy(buf_conv_dest, buff_ir_fft, fft_buff_total_size);
+  
+  
+  memcpy(buf_suma, buf_suma+2*L, buf_suma_size-2*L); 
+  memset(buf_suma+buf_suma_size-2*L,0.0,2*L);
+  //input block fft
+  fft(buf_in_fft, L); 
+      
+  qi=0;
+  loop(Q,
+    
+    //Convolve input block with impulse response
+    convolve_c(buf_conv_dest+qi*buff_size_part_fft, buf_in_fft,L);
+    qi+=1;
+    );
+    i=0;
+    loop(fft_buff_total_size,
+    buf_suma[i]+=buf_conv_dest[i];
+    i+=1;
+  );
+    
+  ifft(buf_suma, L);
+     
+  li=0;
+     
+    loop(K,
+      out_buf[li]=buf_suma[(li+K)*2]/(L);
+      li+=1;
+        
+    );   
+       
+  
+    
+  out_indx = 0;
+);
+
+ 
+spl1=spl0=out_buf[out_indx];
+out_indx+=1;
+  
+    
