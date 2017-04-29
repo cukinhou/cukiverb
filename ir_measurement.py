@@ -1,12 +1,11 @@
 ###############################################################################
 #                                                                             #
-#    Este programa implementa un método para la medición de respuestas al     #
-#    impulso                                                                  #
-#    mediante barrido sinusoidal logarítmico.                                 #
+#    This program measures the acoustic impulse response of a room using      #
+#    logarithmic sine sweep                                                   #
 #                                                                             #
-#    Universida Politécnica de Madrid                                         #    
-#    Alumno:    Javier Nistal Hurlé                                           #
-#    Tutor:    Lino García Morales                                            #
+#    Technical School of Madrid (UPM)                                         #    
+#    Author:    Javier Nistal Hurle                                           #
+#    Supervisor:    Dr. Lino Garcia Morales                                   #
 #                                                                             #
 ###############################################################################
 
@@ -20,24 +19,20 @@ from pylab import plot, figure, show, subplot, title
 
 
 ########## CONSTANTES ##############
-nombre_IR=r'\ir_samu.wav';
-RUTA=r'C:\Users\Javi\AppData\Roaming\REAPER\Data\impulse_response'
-SWEEP=r'\barrido.wav'
+nombre_IR=r'ir_atico.wav';
+RUTA=r''
+SWEEP=r'barrido.wav'
 CHUNK = 512
 WIDTH = 2
 CHANNELS = 1
 RATE = 44100
 RECORD_SECONDS = 15
-INPUT_DEVICE=1  
+INPUT_DEVICE=0 
 OUTPUT_DEVICE=4
 FORMAT = pyaudio.paInt16
 NORMALIZE_MINUS_ONE_dB = 10 ** (-1.0 / 20)
 FRAME_MAX_VALUE = 2 ** 15 - 1
-############# FUNCIONES ###################
 
-#    Función que genera un archivo WAV con la respuesta al impulso.
-#    data: array que contiene los datos de audio
-#    path: variable string con la ruta donde guardar la respuesta al impulso
 
 def save_file(data, path):
   
@@ -50,8 +45,6 @@ def save_file(data, path):
     wave_file.writeframes(data)
     wave_file.close()
 
-#Función que genera el barrido sinusoidal y graba simultáneamente la respuesta
-# a través del micrófono
 
 def sineSweep():
     data_sweep = array('h')
@@ -86,9 +79,6 @@ def sineSweep():
     p.terminate()
     return data_rec, data_sweep
 
-#    Funxión que implementa el método Lundeby para el enventanado de respuestas 
-#    al impulso
-#    ir: array que contiene la respuesta al impulso sin acotar
 
 def lundeby(ir):
     energia=np.power(ir,2)
@@ -158,7 +148,7 @@ def lundeby(ir):
         while ((erro > 0.0001) and (vezes <= INTMAX)):
               
           
-            #Cálculo de nuevos intervalos, 
+            #Calculo de nuevos intervalos, 
             #con p pasos por cada 10dB
             r=t=v=n=media=eixo_tempo= None
             media=array('f')
@@ -169,7 +159,11 @@ def lundeby(ir):
               
             delta = abs(10/b);
             v = np.floor(delta/p);        '%intervalo para obtencao de media'
-            t = np.int(np.floor(len(energia[0:round(cruzamento-delta)-1])/v))
+
+            if cruzamento == np.inf:
+                cruzamento = len(energia)
+                
+            t = int(np.floor(len(energia[0:round(cruzamento-delta)-1])/v))
             if t < 2: 
                 t=2;
             elif not t:
@@ -209,9 +203,9 @@ def lundeby(ir):
         ponto = cruzamento
     return ponto
 
-# Función que implementa el filtrado inverso para la deconvolución del barrido
+# Funcion que implementa el filtrado inverso para la deconvolucion del barrido
 # data_out:    array que contiene la respuesta del sistema al barrido
-# data_in:    array que contiene el barrido sinusoidal utilizado en la medición
+# data_in:    array que contiene el barrido sinusoidal utilizado en la medicion
 def deconvolution (data_out, data_in):
 
     y=fft(data_out,len(data_out))
@@ -221,7 +215,7 @@ def deconvolution (data_out, data_in):
     data=np.around([x*32768 for x in data])
     
     return data
-#Función que enventana la respuesta al impulso
+#Funcion que enventana la respuesta al impulso
 #    ir:    respuesta al impulso sin enventanar
 def IR_window(ir):
     ir2=ir[ir.argmax():len(ir)-1]
@@ -235,13 +229,13 @@ def IR_window(ir):
 data_rec, data_sig=sineSweep()
 
 data= deconvolution(data_rec, data_sig)
-
-impulse_response=IR_window(data)
-save_file(impulse_response, RUTA+nombre_IR)
+impulse_response=data
+# impulse_response=IR_window(data)
+save_file(data, RUTA+nombre_IR)
 figure(1)
 subplot(3,1,1)
 plot(data_rec)
-title('Respuesta a la señal de excitación')
+title('Respuesta a la senal de excitacion')
 subplot(3,1,2)
 plot(data)
 title('Respuesta al impulso deconvolucionada')
