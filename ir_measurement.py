@@ -8,6 +8,7 @@
 #    Supervisor:    Dr. Lino Garcia Morales                                   #
 #    University: Technical School of Madrid (UPM)                             #
 ###############################################################################
+import sys
 
 import pyaudio
 import wave
@@ -19,7 +20,6 @@ from scipy.signal import chirp
 from pylab import plot, figure, show, subplot, title
 from test.test_isinstance import AbstractClass
 from abc import ABCMeta, abstractmethod
-import sys
 from _pyio import __metaclass__
 ########## CONSTANTES ##############
 nombre_IR=r'ir_atico.wav';
@@ -129,152 +129,123 @@ class IRMeasurement(object):
         p.terminate()
         return recording
 
+class IRwindow(object):
+    
+    @staticmethod
+    def lundeby(ir):
+        
+        mean_db = array('f')
+        mean = array('f')
+        eixo_tempo = array('f')
+        find = array('f')
+    
+        energy = np.power(ir, 2)
+        maxenergy = max(energy) + sys.float_info.min
+        t = int(np.floor(len(energy) / RATE / 0.01))
+        v = np.floor(len(energy) / t)
 
-def lundeby(ir):
-    mean_db = array('f')
-    mean = array('f')
-    eixo_tempo = array('f')
-    find = array('f')
+        rms_dB_tail = 10 * np.log10(np.mean(np.divide(
+                        energy[int(round(0.9 * len(energy))) : len(energy)], maxenergy
+                    )))
+    
+        for x in range(1, t+1):
+            mean.append(np.mean(energy[int((x-1)*v):int((x*v)-1)]))
+            eixo_tempo.append(np.ceil(v/2)+((x-1)*v))
+    
+        mean_db = map(lambda a: 10*np.log10(np.divide(a, maxenergy)), mean)
 
-    energy = np.power(ir,2)
-    maxenergy = max(energy)
+        r = 0
+        for i in range(0, len(mean_db)):
+            if (mean_db[i] > rms_dB_tail + 10) and (r < i):
+                r = i
+        
+        for i in range(0,r):
+            if mean_db[i] < rms_dB_tail + 10:
+                find.append(i)
+    
+        if not find:
+            r = 10
+        else:
+            r = int(min(find))
+        if r < 10:
+            r = 10
+            
+        xi = eixo_tempo[0 : r-1]
+        A = np.vstack([xi, np.ones(len(xi))]).T
+        y = mean_db[0 : r-1]
+        b, m = np.linalg.lstsq(A, y)[0]         
+        cruzamento = (rms_dB_tail - m) / b
 
-    rms_dB = 10*np.log10(np.mean(np.divide(
-                 energy[round(0.9*len(energy)):len(energy)],max(energy)
-                 )))
+        if rms_dB_tail > -20:
+            #Relacao sinal ruido insuficiente
+            ponto=len(energy);
+        else:
+            erro = 1.0;
+            INTMAX = 50.0;
+            vezes = 1.0;
+            while ((erro > 0.0001) and (vezes <= INTMAX)):
+                #Calculo de nuevos intervalos,
+                #con p pasos por cada 10dB
+                r = t = v = n = mean = eixo_tempo = None
+                mean = array('f')
+                
+                eixo_tempo = array('f');          ' %numero de passos por decada'
+                p = 5;
+                
+                if b is 0:
+                    b = sys.float_info.min
+    
+                delta = abs(10 / b);
+                v = np.floor(delta / p);        '%intervalo para obtencao de mean'
+    
+                if abs(cruzamento) == np.inf:
+                    cruzamento = len(energy)
+                
+                t = int(np.floor(len(energy[0:int(round(cruzamento-delta)-1)])/v))
+                if t < 2 or not t:
+                    t=2
+                
+                for n in range(1,t+1):
+                    mean.append(np.mean(energy[int(((n-1)*v)):int((n*v)-1)]))
+                    eixo_tempo.append(np.ceil(v/2)+((n-1)*v));
+    
+                meandB = map(lambda x: 10 * np.log10(np.divide(x, max(energy))), mean)
+    
+                xi = m = b = noise = rms_dB_tail = None
+    
+                xi = eixo_tempo
+                A = np.vstack([xi, np.ones(len(xi))]).T
+                y = meandB
+                b, m = np.linalg.lstsq(A, y)[0]
+    
+    
+                noise = energy[int(round(cruzamento+delta)):len(energy)]
+    
+                if (len(noise) < round(.1*len(energy))):
+                    noise = energy[int(round(.9*len(energy))):len(energy)-1]
+    
+    
+                rms_dB = 10*np.log10(np.divide(np.mean(noise), max(energy)))
+                erro = abs(cruzamento - (rms_dB - m) / b)/cruzamento;
+                cruzamento = round((rms_dB - m) / b);
+                vezes = vezes + 1;
 
-    t = int(np.floor(len(energy)/RATE/0.01))
-    v = np.floor(len(energy)/t)
+        if cruzamento > len(energy):
+            ponto = len(energy)
+        else:
+            ponto = cruzamento
+            
+        return ir[:int(abs(ponto))]
 
-    for x in range(1,t+1):
-        mean.append(np.mean(energy[((x-1)*v):(x*v)-1]))
-        eixo_tempo.append(np.ceil(v/2)+((x-1)*v))
-
-
-    mean_db = map(lambda x: 10*np.log10(np.divide(x, maxenergy)), mean)
-#     for i in range(0,len(mean)-1):
-#         if mean[i]==0:
-#             mean[i]= eps
-#         mean_db.append(10*np.log10(np.divide(mean[i], maxenergy)))
-
-
-    r=0
-    for i in range(0, len(mean_db)):
-        if (mean_db[i]>rms_dB+10) and (r<i):
-            find.append(mean_db[i])
-            r=i
-
-
-
-    find=None
-    find=array('f')
-    for i in range(0,r):
-        if mean_db[i]<rms_dB+10:
-            find.append(i)
-
-    if not find:
-        r=0
-    else:
-        r=int(min(find))
-
-
-    if r<10:
-        r=10
-    xi = eixo_tempo[0:r-1]
-    A = np.vstack([xi, np.ones(len(xi))]).T
-    y = mean_db[0:r-1]
-    b, m = np.linalg.lstsq(A,y)[0]
-
-    cruzamento = (rms_dB-m)/b
-    ####################################################################
-    if rms_dB > -20:
-        #Relacao sinal ruido insuficiente
-        ponto=len(energy);
-
-    else:
-
-        #%%%%%%%%%%%%%%%%%%%%%%%%    PARTE ITERATIVA DEL PROCESO    %%%%%%%
-
-        erro=1.0;
-        INTMAX=50.0;
-        vezes=1.0;
-        while ((erro > 0.0001) and (vezes <= INTMAX)):
-
-
-            #Calculo de nuevos intervalos,
-            #con p pasos por cada 10dB
-            r=t=v=n=mean=eixo_tempo= None
-            mean=array('f')
-            eixo_tempo=array('f');          ' %numero de passos por decada'
-            p = 5;
-            if b==0:
-                b=eps
-
-            delta = abs(10/b);
-            v = np.floor(delta/p);        '%intervalo para obtencao de mean'
-
-            if cruzamento == np.inf:
-                cruzamento = len(energy)
-
-            t = int(np.floor(len(energy[0:round(cruzamento-delta)-1])/v))
-            if t < 2:
-                t=2;
-            elif not t:
-                t=2;
-
-
-            for n in range(1,t+1):
-                mean.append(np.mean(energy[(((n-1)*v)):(n*v)-1]))
-                eixo_tempo.append(np.ceil(v/2)+((n-1)*v));
-
-            meandB = [x*10 for x in np.log10(np.divide(mean, max(energy)))]
-
-            xi=m=b=noise=rms_dB= None
-
-            xi = eixo_tempo
-            A = np.vstack([xi, np.ones(len(xi))]).T
-            y=meandB
-            b, m = np.linalg.lstsq(A,y)[0]
-
-
-            noise = energy[round(cruzamento+delta):len(energy)]
-
-            if (len(noise) < round(.1*len(energy))):
-                noise = energy[round(.9*len(energy)):len(energy)-1]
-
-
-            rms_dB = 10*np.log10(np.divide(np.mean(noise), max(energy)))
-            erro = abs(cruzamento - (rms_dB-m)/b)/cruzamento;
-            cruzamento = round((rms_dB-m)/b);
-            vezes = vezes + 1;
-
-
-
-    if cruzamento > len(energy):
-        ponto = len(energy)
-    else:
-        ponto = cruzamento
-    return ponto
-
-def IR_window(ir):
-    ir2=ir[ir.argmax():len(ir)-1]
-    corte=lundeby(ir2)
-    if corte>=1:
-        irWindow=ir2[0:corte-1] #Escalar por 32768  y convertir a entero
-    else:
-        irWindow=ir2
-    return np.int16(irWindow)
-
-
-########## PROGRAMA #####################
+if __name__=='__main__':
+    
  
-sweep = SineSweep().create()
+    sweep = SineSweep().create()
 
-sweep_response = IRMeasurement().measure(sweep)
-
-plot(sweep_response)
-show()
-# ir = SineSweep.get_ir(sweep_response, sweep)
-
-# impulse_response=IR_window(data)
-# save_file(ir, RUTA+nombre_IR)
+    sweep_response = IRMeasurement().measure(sweep)
+    ir = SineSweep.get_ir(sweep, sweep_response)
+    ir = IRwindow.lundeby(ir[np.argmax(ir):])
+    plot(ir)
+    show()
+    
+    print
