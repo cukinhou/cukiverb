@@ -6,7 +6,7 @@
 #    Technical School of Madrid (UPM)                                         #
 #    Author:    Javier Nistal Hurle                                           #
 #    Supervisor:    Dr. Lino Garcia Morales                                   #
-#                                                                             #
+#    University: Technical School of Madrid (UPM)                             #
 ###############################################################################
 
 import pyaudio
@@ -48,7 +48,6 @@ def save_file(data, path):
     wf.writeframes(data)
     wf.close()
 
-
 class ExcitationSignal:
     __metaclass__ = ABCMeta
     def __init__(self, type='sweep', sample_rate=44100, duration=5):
@@ -57,7 +56,7 @@ class ExcitationSignal:
         self.duration = duration
         
     @abstractmethod
-    def generate(self):
+    def create(self):
         pass
     
     @abstractmethod
@@ -70,20 +69,16 @@ class SineSweep(ExcitationSignal):
         super(SineSweep, self).__init__()
         self.method = method
         
-    def generate(self):
-        sweep = chirp(
-            np.linspace(
+    def create(self):
+        
+        t = np.linspace(
                 0, 
                 self.duration, 
                 self.sample_rate * self.duration - 1
-            ), 
-            20, 
-            self.duration, 
-            20000, 
-            self.method
-        ) * 32767
-                              
-        return sweep
+            )
+        sweep = chirp(t, 20, self.duration, 20000, self.method) * 32767
+        
+        return sweep.astype(np.int16)
 
     @staticmethod
     def get_ir(sweep, sweep_response):
@@ -96,14 +91,22 @@ class SineSweep(ExcitationSignal):
         return np.around([x*32768 for x in ir])
 
 class IRMeasurement(object):
-    def __init__(self, signal, n_ch=1, sr=44100):
+    def __init__(self, n_ch=1, sr=44100, frame_size=CHUNK):
         self.n_ch = n_ch
         self.sr = sr
-        self.signal = signal
-
-    def measure(self):
+        self.frame_size = frame_size
+        
+    def generate(self, signal):
+            
+        zero_padd = np.zeros(self.frame_size - np.mod(len(signal), self.frame_size))
+        signal = np.append(signal, zero_padd)
+        
+        for i in range(0, len(signal)/self.frame_size):
+            yield signal[i*self.frame_size:(i+1)*self.frame_size].astype(np.int16).tostring()
+            
+    def measure(self, signal):
         data_sweep = array('h')
-        data_rec = array('h')
+        recording = array('h')
 
         print("* recording")
         p = pyaudio.PyAudio()
@@ -116,25 +119,15 @@ class IRMeasurement(object):
                 output_device_index=OUTPUT_DEVICE,
                 frames_per_buffer=CHUNK)
 
-        data = self.signal.astype(np.int16).tostring()
-
-        wf = wave.open(RUTA+SWEEP, 'r') #Devuelve un string
-        dataOUT = wf.readframes(CHUNK)
-        i = 0
-        print self.signal
-#         while dataOUT != '':
-#             stream.write(data, CHUNK)
-#             data_chunk = stream.read(CHUNK)
-# 
-#             data_sweep.fromstring(data)
-#             dataOUT = wf.readframes(CHUNK)
-#             data_rec.fromstring(data_chunk)
-#             i += 1
-        stream.write(data)
+        for frame in self.generate(signal):
+            
+            stream.write(frame, self.frame_size)
+            recording.fromstring(stream.read(self.frame_size))
+  
         stream.stop_stream()
         stream.close()
         p.terminate()
-        return data_rec
+        return recording
 
 
 def lundeby(ir):
@@ -275,12 +268,12 @@ def IR_window(ir):
 
 ########## PROGRAMA #####################
  
-sweep = SineSweep().generate()
-figure()
-plot(sweep)
-show()
-sweep_response = IRMeasurement(sweep).measure()
+sweep = SineSweep().create()
 
+sweep_response = IRMeasurement().measure(sweep)
+
+plot(sweep_response)
+show()
 # ir = SineSweep.get_ir(sweep_response, sweep)
 
 # impulse_response=IR_window(data)
