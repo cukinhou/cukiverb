@@ -24,8 +24,15 @@ class ExcitationSignal:
 
 
 class SineSweep(ExcitationSignal):
-    def __init__(self, method='logarithmic'):
-        super(SineSweep, self).__init__()
+    def __init__(
+            self, 
+            type='sweep', 
+            sample_rate=44100, 
+            duration=5, 
+            method='logarithmic'
+        ):
+        
+        super(SineSweep, self).__init__(type, sample_rate, duration)
         self.method = method
         
     def create(self):
