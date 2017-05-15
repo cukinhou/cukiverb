@@ -10,27 +10,26 @@ from measurement import signals, ir_measurement, ir_window
 
 def main(args):
     time = args.time
-    method = args.method
+    # method = args.method
     name = args.name
 
     assert time > 0, \
         'Time variable must be greater than zero '
-    
     ss = signals.SineSweep(duration=time)
     irm = ir_measurement.IRMeasurement()
 
     sweep = ss.create()
     sweep_response = irm.measure(sweep)
-    
     ir = ss.get_ir(sweep, sweep_response)
     ir = ir_window.IRwindow.lundeby(ir[np.argmax(ir):])
-    
     ir_measurement.save_file(ir, 'cukiverb/impulse-responses/'+name+'.wav')
-    print 'Finished'
+    print '* finished'
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Impulse response measurement')
+    parser = argparse.ArgumentParser(
+        description='Impulse response measurement'
+    )
 
     parser.add_argument(
         '-t',
